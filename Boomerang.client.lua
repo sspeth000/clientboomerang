@@ -215,6 +215,10 @@ local function performLocalThrow()
     -- Equivalent to the original fire(v) spawn and target calculations.
     local spawnPosition = primaryPart.Position + lookAt * LAUNCH_OFFSET
     local outboundTarget = spawnPosition + lookAt * OUTBOUND_DISTANCE
+    -- Snapshot the player's throw-time position. The return target must stay
+    -- fixed here rather than tracking the player as they move. Keep it near
+    -- torso height so the boomerang returns at a practical catching level.
+    local throwReturnPosition = primaryPart.Position + Vector3.new(0, 1.5, 0)
 
     -- Clone only the Handle. It is created by this LocalScript and remains
     -- local to this client. It collides with world geometry, but not characters.
@@ -339,42 +343,33 @@ local function performLocalThrow()
         end
     end
 
-    -- Return leg: guide the boomerang back to the player's torso/root height,
-    -- not down to the feet or the old head-only target. Catch detection remains
-    -- active throughout this leg, so touching it at any point catches it.
+    -- Return to the fixed position where the player launched the throw.
+    -- This target is a snapshot, not a live character-following position.
     local returnStarted = os.clock()
-    local returnRoot = currentCharacter:FindFirstChild("HumanoidRootPart")
-    if visual.Parent and bodyPosition.Parent and not caught and returnRoot then
+    if visual.Parent and bodyPosition.Parent and not caught then
         task.wait(RETURN_DELAY)
-
-        local returnTarget = returnRoot.Position + Vector3.new(0, 1.5, 0)
-        bodyPosition.Position = returnTarget
+        bodyPosition.Position = throwReturnPosition
 
         while visual.Parent and bodyPosition.Parent and not caught do
             task.wait(0.1)
-
-            local liveCharacter = player.Character
-            local liveRoot = liveCharacter and liveCharacter:FindFirstChild("HumanoidRootPart")
-            if liveRoot then
-                -- Track the player's current level while the boomerang returns.
-                bodyPosition.Position = liveRoot.Position + Vector3.new(0, 1.5, 0)
-            end
 
             if os.clock() - returnStarted > MAX_FLIGHT_TIME then
                 break
             end
 
-            if (visual.Position - bodyPosition.Position).Magnitude < RETURN_FINISH_DISTANCE then
+            if (visual.Position - throwReturnPosition).Magnitude < RETURN_FINISH_DISTANCE then
                 break
             end
         end
     end
 
-    -- If it was not caught, release guidance and let gravity drop it.
-    -- Keep the local visual in Workspace indefinitely so a missed throw does
-    -- not silently despawn; it can still be touched and caught on the ground.
+    -- A missed return releases guidance and stops the flying loop immediately.
+    -- The dropped visual remains in Workspace and stays catchable.
     if bodyPosition.Parent then
         bodyPosition:Destroy()
+    end
+    if sound and sound.Parent then
+        sound:Stop()
     end
 
     while visual.Parent and not caught do
