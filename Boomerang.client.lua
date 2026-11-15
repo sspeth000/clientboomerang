@@ -304,9 +304,9 @@ tool.Unequipped:Connect(function()
     equippedMouse = nil
     cursorReady = false
 
-    -- Do not leave the real Handle hidden if the player switches tools mid-animation.
-    local _, currentHandle = getCharacter()
-    if currentHandle then
+    -- Restore the real Handle even though the Tool has moved back to Backpack.
+    local currentHandle = tool:FindFirstChild("Handle")
+    if currentHandle and currentHandle:IsA("BasePart") then
         currentHandle.LocalTransparencyModifier = 0
     end
 end)
