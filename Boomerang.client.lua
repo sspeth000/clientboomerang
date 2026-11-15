@@ -1,11 +1,10 @@
 -- Boomerang.client.lua
 -- Place this LocalScript in StarterPlayer > StarterPlayerScripts.
 -- Recreates the original gear's Handle mesh, texture, grip, attachment, and sound.
--- Throwing is a local visual animation only. No projectile physics, hit detection,
--- damage, touch effects, remote calls, or server-side changes are performed.
+-- Throwing uses a client-created, non-interactive physics visual.
+-- No projectile collisions, touch effects, damage, remote calls, or server changes.
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 if not player then
@@ -20,16 +19,15 @@ local TEXTURE_ID = "rbxassetid://13425822"
 local TOOL_TEXTURE_ID = "rbxassetid://13426134"
 local FLYING_SOUND_ID = "rbxassetid://18478970"
 
--- Values and phase thresholds translated from the original launcher/controller.
+-- Original launcher/controller values.
 local LAUNCH_OFFSET = 10
 local OUTBOUND_DISTANCE = 100
-local INITIAL_SPEED = 150
+local INITIAL_VELOCITY = 150
 local OUTBOUND_SWITCH_DISTANCE = 10
 local RETURN_FINISH_DISTANCE = 5
 local RETURN_DELAY = 0.5
-local SPIN_RATE = 10
 local COOLDOWN = 1
-local MAX_PHASE_TIME = 8 -- Safety timeout for a missing/respawning character.
+local MAX_FLIGHT_TIME = 15 -- Cleanup guard if the character disappears or physics stalls.
 
 -- Remove an older copy so rerunning the LocalScript stays clean.
 local existing = backpack:FindFirstChild(TOOL_NAME)
@@ -129,40 +127,11 @@ local function getCharacter()
     return currentCharacter, visualHandle
 end
 
--- Local-only translation of the original controller's distance-driven phases.
--- The original BodyPosition is replaced with anchored CFrame movement, so this
--- visual copy has no physical collision, touch callbacks, or gameplay effects.
-local function moveVisualToward(visual, getTargetPosition, stopDistance, speed, spin)
-    local elapsed = 0
-
-    while visual.Parent and elapsed < MAX_PHASE_TIME do
-        local dt = RunService.RenderStepped:Wait()
-        elapsed += dt
-
-        local targetPosition = getTargetPosition()
-        if not targetPosition then
-            return false
-        end
-
-        local offset = targetPosition - visual.Position
-        local distance = offset.Magnitude
-        if distance <= stopDistance then
-            return true
-        end
-
-        if distance > 0.001 then
-            local step = math.min(distance, speed * dt)
-            local nextPosition = visual.Position + offset.Unit * step
-            local facing = offset.Unit
-            local base = CFrame.lookAt(nextPosition, nextPosition + facing)
-            local spinCFrame = CFrame.Angles(0, spin and SPIN_RATE * elapsed or 0, 0)
-            visual.CFrame = base * spinCFrame
-        end
-    end
-
-    return false
-end
-
+-- Direct client-side translation of the original launcher/controller movement.
+-- BodyPosition, initial velocity, rotation velocity, target distances, polling
+-- intervals, and return timing follow the original source. The one intentional
+-- gameplay omission is collision/touch behavior: this local clone cannot hit
+-- or affect characters, parts, or the server.
 local function performLocalThrow()
     if busy or (os.clock() - lastActivation) < COOLDOWN then
         return
@@ -174,15 +143,14 @@ local function performLocalThrow()
     end
 
     local head = currentCharacter:FindFirstChild("Head")
-    local root = currentCharacter:FindFirstChild("HumanoidRootPart") or currentCharacter.PrimaryPart
-    if not head or not root then
+    local primaryPart = currentCharacter.PrimaryPart
+    if not head or not primaryPart then
         return
     end
 
     busy = true
     lastActivation = os.clock()
 
-    -- Original Local Gui cursor feedback and one-second cooldown.
     if equippedMouse then
         equippedMouse.Icon = WAIT_CURSOR
         cursorReady = false
@@ -194,46 +162,60 @@ local function performLocalThrow()
         end)
     end
 
-    local aimPosition
+    local targetPosition
     if equippedMouse then
-        local ok, hitPosition = pcall(function()
+        local ok, mouseHit = pcall(function()
             return equippedMouse.Hit.Position
         end)
         if ok then
-            aimPosition = hitPosition
+            targetPosition = mouseHit
         end
     end
 
-    if not aimPosition then
+    if not targetPosition then
         local camera = workspace.CurrentCamera
-        aimPosition = head.Position + (camera and camera.CFrame.LookVector or root.CFrame.LookVector) * OUTBOUND_DISTANCE
+        local aimDirection = camera and camera.CFrame.LookVector or primaryPart.CFrame.LookVector
+        targetPosition = head.Position + aimDirection * OUTBOUND_DISTANCE
     end
 
-    local direction = aimPosition - head.Position
-    if direction.Magnitude < 0.001 then
-        direction = root.CFrame.LookVector
+    -- Equivalent to the original (targetPos - character.Head.Position).Unit.
+    local lookAt = targetPosition - head.Position
+    if lookAt.Magnitude < 0.001 then
+        lookAt = primaryPart.CFrame.LookVector
     else
-        direction = direction.Unit
+        lookAt = lookAt.Unit
     end
 
-    -- Original launcher: spawn ten studs ahead, then set a target one hundred
-    -- studs farther along the aim direction. Initial visual travel uses its
-    -- original 150-stud/second velocity as a cosmetic movement speed.
-    local spawnPosition = root.Position + direction * LAUNCH_OFFSET
-    local outboundTarget = spawnPosition + direction * OUTBOUND_DISTANCE
+    -- Equivalent to the original fire(v) spawn and target calculations.
+    local spawnPosition = primaryPart.Position + lookAt * LAUNCH_OFFSET
+    local outboundTarget = spawnPosition + lookAt * OUTBOUND_DISTANCE
 
+    -- Clone only the Handle. It is created by this LocalScript and remains
+    -- local to this client; disabling all interaction prevents gameplay effects.
     local visual = currentHandle:Clone()
     visual.Name = "LocalBoomerangVisual"
-    visual.Anchored = true
+    visual.Anchored = false
     visual.CanCollide = false
     visual.CanTouch = false
     visual.CanQuery = false
-    visual.Massless = true
-    visual.CFrame = CFrame.lookAt(spawnPosition, spawnPosition + direction)
+    visual.Massless = false
+    visual.CFrame = CFrame.new(spawnPosition)
     visual.Parent = workspace
     activeVisual = visual
 
     currentHandle.LocalTransparencyModifier = 1
+
+    -- Original launcher movement setup, adapted to the non-interactive clone.
+    visual.Position = spawnPosition
+    visual.RotVelocity = Vector3.new(0, 10, 0)
+    visual.Velocity = lookAt * INITIAL_VELOCITY
+
+    local bodyPosition = Instance.new("BodyPosition")
+    bodyPosition.MaxForce = Vector3.new(1e3, 1e3, 1e3)
+    bodyPosition.D = 1.25e3
+    bodyPosition.P = 1e3
+    bodyPosition.Position = outboundTarget
+    bodyPosition.Parent = visual
 
     local sound = visual:FindFirstChild("FlyingSound")
     if sound and sound:IsA("Sound") then
@@ -241,38 +223,55 @@ local function performLocalThrow()
         sound:Play()
     end
 
-    -- Original controller checks when the boomerang comes within ten studs
-    -- of its outbound target, then changes the target to the thrower's Head.
-    moveVisualToward(
-        visual,
-        function()
-            return outboundTarget
-        end,
-        OUTBOUND_SWITCH_DISTANCE,
-        INITIAL_SPEED,
-        false
-    )
+    -- Original controller's outbound distance check, including its 0.1s polling.
+    local flightStarted = os.clock()
+    local validCharacter = true
 
-    -- Preserve the original half-second pause before its return-spin phase.
-    if visual.Parent then
-        task.wait(RETURN_DELAY)
+    while visual.Parent and bodyPosition.Parent do
+        task.wait(0.1)
+
+        if os.clock() - flightStarted > MAX_FLIGHT_TIME then
+            validCharacter = false
+            break
+        end
+
+        if not head.Parent then
+            validCharacter = false
+            break
+        end
+
+        if (visual.Position - bodyPosition.Position).Magnitude < OUTBOUND_SWITCH_DISTANCE then
+            -- Original creator lookup/return-target assignment, using the local
+            -- player reference instead of a server-created creator ObjectValue.
+            local creatorCharacter = player.Character
+            local creatorHead = creatorCharacter and creatorCharacter:FindFirstChild("Head")
+            if not creatorHead then
+                validCharacter = false
+                break
+            end
+
+            bodyPosition.Position = creatorHead.Position
+            break
+        end
     end
 
-    -- Original controller sets RotVelocity to (0, 10, 0), then waits until
-    -- the boomerang comes within five studs of its return target.
-    if visual.Parent and head.Parent then
-        moveVisualToward(
-            visual,
-            function()
-                if head.Parent then
-                    return head.Position
-                end
-                return nil
-            end,
-            RETURN_FINISH_DISTANCE,
-            INITIAL_SPEED,
-            true
-        )
+    -- Original controller waits half a second, then changes RotVelocity.
+    if visual.Parent and bodyPosition.Parent and validCharacter then
+        task.wait(RETURN_DELAY)
+        visual.RotVelocity = Vector3.new(0, 10, 0)
+
+        -- Original return-distance loop, retaining its five-stud threshold.
+        while visual.Parent and bodyPosition.Parent do
+            task.wait(0.1)
+
+            if os.clock() - flightStarted > MAX_FLIGHT_TIME then
+                break
+            end
+
+            if (visual.Position - bodyPosition.Position).Magnitude < RETURN_FINISH_DISTANCE then
+                break
+            end
+        end
     end
 
     if sound and sound.Parent then
