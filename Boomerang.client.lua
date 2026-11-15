@@ -360,6 +360,12 @@ local function performLocalThrow()
         end
     end
 
+    -- Remove any remaining guidance force (for example if the flight guard
+    -- or character check ended the outbound loop early).
+    if bodyPosition.Parent then
+        bodyPosition:Destroy()
+    end
+
     -- No automatic return: after reaching the outbound destination the
     -- boomerang falls under gravity and remains catchable on the ground.
     -- Keep the catch overlap check alive until the player actually touches it.
