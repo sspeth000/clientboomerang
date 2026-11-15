@@ -1,7 +1,7 @@
 -- Boomerang.client.lua
 -- Place this LocalScript in StarterPlayer > StarterPlayerScripts.
--- Creates a visual-only Boomerang Tool in the local player's Backpack.
--- No remotes are used and no server inventory is modified.
+-- Creates a decorative, client-only classic-style boomerang Tool.
+-- It has no projectile, hit detection, damage, remotes, or server effects.
 
 local Players = game:GetService("Players")
 
@@ -11,10 +11,9 @@ if not player then
 end
 
 local backpack = player:WaitForChild("Backpack")
-
 local TOOL_NAME = "Local Boomerang"
 
--- Make rerunning the script safe: keep only one copy.
+-- Remove an older copy so rerunning the LocalScript stays clean.
 local existing = backpack:FindFirstChild(TOOL_NAME)
 if existing then
     existing:Destroy()
@@ -22,51 +21,100 @@ end
 
 local character = player.Character
 if character then
-    local equipped = character:FindFirstChild(TOOL_NAME)
-    if equipped then
-        equipped:Destroy()
+    local equippedCopy = character:FindFirstChild(TOOL_NAME)
+    if equippedCopy then
+        equippedCopy:Destroy()
     end
 end
 
 local tool = Instance.new("Tool")
 tool.Name = TOOL_NAME
-tool.ToolTip = "A locally-created boomerang"
+tool.ToolTip = "Decorative classic-style boomerang"
 tool.RequiresHandle = true
 tool.CanBeDropped = false
-tool.Grip = CFrame.new(0, -0.15, -0.35) * CFrame.Angles(0, 0, math.rad(-12))
+tool.Grip = CFrame.new(0, -0.12, -0.28) * CFrame.Angles(math.rad(-8), 0, math.rad(-18))
 tool:SetAttribute("ClientOnly", true)
+tool:SetAttribute("DecorativeOnly", true)
 
+local function makePiece(name, size, color, relativeCFrame, shape)
+    local piece
+    if shape == "wedge" then
+        piece = Instance.new("WedgePart")
+    else
+        piece = Instance.new("Part")
+    end
+
+    piece.Name = name
+    piece.Size = size
+    piece.Material = Enum.Material.Wood
+    piece.Color = color
+    piece.TopSurface = Enum.SurfaceType.Smooth
+    piece.BottomSurface = Enum.SurfaceType.Smooth
+    piece.CanCollide = false
+    piece.CanTouch = false
+    piece.CanQuery = false
+    piece.Massless = true
+    piece.Anchored = false
+    piece.CFrame = relativeCFrame
+    piece.Parent = tool
+
+    if name ~= "Handle" then
+        local weld = Instance.new("WeldConstraint")
+        weld.Part0 = handle
+        weld.Part1 = piece
+        weld.Parent = handle
+    end
+
+    return piece
+end
+
+-- The central section is the Tool's required Handle.
 local handle = Instance.new("Part")
 handle.Name = "Handle"
-handle.Size = Vector3.new(0.28, 0.42, 2.1)
+handle.Size = Vector3.new(0.22, 0.18, 0.72)
 handle.Material = Enum.Material.Wood
-handle.Color = Color3.fromRGB(145, 83, 43)
+handle.Color = Color3.fromRGB(151, 91, 48)
 handle.TopSurface = Enum.SurfaceType.Smooth
 handle.BottomSurface = Enum.SurfaceType.Smooth
 handle.CanCollide = false
 handle.CanTouch = false
 handle.CanQuery = false
 handle.Massless = true
+handle.Anchored = false
 handle.Parent = tool
 
--- A second angled arm gives the tool a recognizable boomerang silhouette.
-local wing = Instance.new("Part")
-wing.Name = "Wing"
-wing.Size = Vector3.new(0.28, 0.42, 1.85)
-wing.Material = Enum.Material.Wood
-wing.Color = Color3.fromRGB(177, 111, 59)
-wing.TopSurface = Enum.SurfaceType.Smooth
-wing.BottomSurface = Enum.SurfaceType.Smooth
-wing.CanCollide = false
-wing.CanTouch = false
-wing.CanQuery = false
-wing.Massless = true
-wing.CFrame = handle.CFrame * CFrame.new(0, 0, -0.78) * CFrame.Angles(0, math.rad(105), 0)
-wing.Parent = tool
+-- Short overlapping wooden sections form a curved V silhouette.
+local base = handle.CFrame
+local darkWood = Color3.fromRGB(151, 91, 48)
+local warmWood = Color3.fromRGB(177, 116, 65)
 
-local weld = Instance.new("WeldConstraint")
-weld.Part0 = handle
-weld.Part1 = wing
-weld.Parent = handle
+local pieces = {
+    { "LeftInner",  Vector3.new(0.22, 0.18, 0.72), darkWood, CFrame.new(-0.20, 0, -0.48) * CFrame.Angles(0, math.rad(-27), 0) },
+    { "LeftOuter",  Vector3.new(0.20, 0.16, 0.62), warmWood, CFrame.new(-0.56, 0, -0.88) * CFrame.Angles(0, math.rad(-48), 0) },
+    { "RightInner", Vector3.new(0.22, 0.18, 0.72), darkWood, CFrame.new(0.20, 0, -0.48) * CFrame.Angles(0, math.rad(27), 0) },
+    { "RightOuter", Vector3.new(0.20, 0.16, 0.62), warmWood, CFrame.new(0.56, 0, -0.88) * CFrame.Angles(0, math.rad(48), 0) },
+}
+
+for _, data in ipairs(pieces) do
+    local relative = data[4]
+    makePiece(data[1], data[2], data[3], base * relative)
+end
+
+-- Small tapered tips give the ends a more finished, classic prop-like shape.
+makePiece(
+    "LeftTip",
+    Vector3.new(0.20, 0.16, 0.34),
+    darkWood,
+    base * CFrame.new(-0.82, 0, -1.13) * CFrame.Angles(0, math.rad(-58), 0),
+    "wedge"
+)
+
+makePiece(
+    "RightTip",
+    Vector3.new(0.20, 0.16, 0.34),
+    darkWood,
+    base * CFrame.new(0.82, 0, -1.13) * CFrame.Angles(0, math.rad(58), 0),
+    "wedge"
+)
 
 tool.Parent = backpack
