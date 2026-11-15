@@ -20,15 +20,16 @@ local TEXTURE_ID = "rbxassetid://13425822"
 local TOOL_TEXTURE_ID = "rbxassetid://13426134"
 local FLYING_SOUND_ID = "rbxassetid://18478970"
 
--- Tuned from the original launcher/controller timing and target distances.
+-- Values and phase thresholds translated from the original launcher/controller.
 local LAUNCH_OFFSET = 10
 local OUTBOUND_DISTANCE = 100
-local OUTBOUND_DURATION = 0.9
+local INITIAL_SPEED = 150
+local OUTBOUND_SWITCH_DISTANCE = 10
+local RETURN_FINISH_DISTANCE = 5
 local RETURN_DELAY = 0.5
-local RETURN_DURATION = 0.85
+local SPIN_RATE = 10
 local COOLDOWN = 1
-local ARC_HEIGHT = 3
-local SPIN_RATE = 10 -- Original controller used RotVelocity = Vector3.new(0, 10, 0).
+local MAX_PHASE_TIME = 8 -- Safety timeout for a missing/respawning character.
 
 -- Remove an older copy so rerunning the LocalScript stays clean.
 local existing = backpack:FindFirstChild(TOOL_NAME)
@@ -103,7 +104,7 @@ local busy = false
 local lastActivation = 0
 local activeVisual = nil
 local equippedMouse = nil
-local cursorReady = false
+local cursorReady = true
 
 local NORMAL_CURSOR = "rbxasset://textures\\GunCursor.png"
 local WAIT_CURSOR = "rbxasset://textures\\GunWaitCursor.png"
@@ -128,31 +129,38 @@ local function getCharacter()
     return currentCharacter, visualHandle
 end
 
-local function animateArc(visual, startCFrame, getEndCFrame, duration, spinSign, arcHeight)
+-- Local-only translation of the original controller's distance-driven phases.
+-- The original BodyPosition is replaced with anchored CFrame movement, so this
+-- visual copy has no physical collision, touch callbacks, or gameplay effects.
+local function moveVisualToward(visual, getTargetPosition, stopDistance, speed, spin)
     local elapsed = 0
-    local startRotation = startCFrame - startCFrame.Position
 
-    while elapsed < duration and visual.Parent do
-        local deltaTime = RunService.RenderStepped:Wait()
-        elapsed += deltaTime
+    while visual.Parent and elapsed < MAX_PHASE_TIME do
+        local dt = RunService.RenderStepped:Wait()
+        elapsed += dt
 
-        local alpha = math.clamp(elapsed / duration, 0, 1)
-        local endCFrame = getEndCFrame()
-        if not endCFrame then
-            break
+        local targetPosition = getTargetPosition()
+        if not targetPosition then
+            return false
         end
 
-        local startPosition = startCFrame.Position
-        local endPosition = endCFrame.Position
-        local position = startPosition:Lerp(endPosition, alpha)
-        position += Vector3.new(0, math.sin(alpha * math.pi) * arcHeight, 0)
+        local offset = targetPosition - visual.Position
+        local distance = offset.Magnitude
+        if distance <= stopDistance then
+            return true
+        end
 
-        local endRotation = endCFrame - endCFrame.Position
-        local baseRotation = startRotation:Lerp(endRotation, alpha)
-        local spin = CFrame.Angles(0, SPIN_RATE * elapsed * spinSign, 0)
-
-        visual.CFrame = CFrame.new(position) * baseRotation * spin
+        if distance > 0.001 then
+            local step = math.min(distance, speed * dt)
+            local nextPosition = visual.Position + offset.Unit * step
+            local facing = offset.Unit
+            local base = CFrame.lookAt(nextPosition, nextPosition + facing)
+            local spinCFrame = CFrame.Angles(0, spin and SPIN_RATE * elapsed or 0, 0)
+            visual.CFrame = base * spinCFrame
+        end
     end
+
+    return false
 end
 
 local function performLocalThrow()
@@ -174,31 +182,31 @@ local function performLocalThrow()
     busy = true
     lastActivation = os.clock()
 
-    -- Match the original Local Gui cursor feedback and one-second cooldown.
+    -- Original Local Gui cursor feedback and one-second cooldown.
     if equippedMouse then
         equippedMouse.Icon = WAIT_CURSOR
         cursorReady = false
         task.delay(COOLDOWN, function()
+            cursorReady = true
             if equippedMouse then
                 equippedMouse.Icon = NORMAL_CURSOR
-                cursorReady = true
             end
         end)
     end
 
-    local camera = workspace.CurrentCamera
     local aimPosition
     if equippedMouse then
-        local ok, hit = pcall(function()
+        local ok, hitPosition = pcall(function()
             return equippedMouse.Hit.Position
         end)
-        if ok and hit then
-            aimPosition = hit
+        if ok then
+            aimPosition = hitPosition
         end
     end
 
     if not aimPosition then
-        aimPosition = head.Position + (camera and camera.CFrame.LookVector or root.CFrame.LookVector) * 100
+        local camera = workspace.CurrentCamera
+        aimPosition = head.Position + (camera and camera.CFrame.LookVector or root.CFrame.LookVector) * OUTBOUND_DISTANCE
     end
 
     local direction = aimPosition - head.Position
@@ -208,13 +216,12 @@ local function performLocalThrow()
         direction = direction.Unit
     end
 
-    -- The original launcher starts roughly ten studs ahead and aims another
-    -- hundred studs forward. This is a visual path only, not a physics launch.
-    local startCFrame = currentHandle.CFrame
-    local outboundPosition = root.Position + direction * (LAUNCH_OFFSET + OUTBOUND_DISTANCE)
-    local outboundCFrame = CFrame.lookAt(outboundPosition, outboundPosition + direction)
+    -- Original launcher: spawn ten studs ahead, then set a target one hundred
+    -- studs farther along the aim direction. Initial visual travel uses its
+    -- original 150-stud/second velocity as a cosmetic movement speed.
+    local spawnPosition = root.Position + direction * LAUNCH_OFFSET
+    local outboundTarget = spawnPosition + direction * OUTBOUND_DISTANCE
 
-    -- Anchored, non-colliding clone: it cannot touch or affect anything.
     local visual = currentHandle:Clone()
     visual.Name = "LocalBoomerangVisual"
     visual.Anchored = true
@@ -222,7 +229,7 @@ local function performLocalThrow()
     visual.CanTouch = false
     visual.CanQuery = false
     visual.Massless = true
-    visual.CFrame = startCFrame
+    visual.CFrame = CFrame.lookAt(spawnPosition, spawnPosition + direction)
     visual.Parent = workspace
     activeVisual = visual
 
@@ -234,36 +241,43 @@ local function performLocalThrow()
         sound:Play()
     end
 
-    animateArc(
+    -- Original controller checks when the boomerang comes within ten studs
+    -- of its outbound target, then changes the target to the thrower's Head.
+    moveVisualToward(
         visual,
-        startCFrame,
         function()
-            return outboundCFrame
+            return outboundTarget
         end,
-        OUTBOUND_DURATION,
-        1,
-        ARC_HEIGHT
+        OUTBOUND_SWITCH_DISTANCE,
+        INITIAL_SPEED,
+        false
     )
 
-    -- The original controller pauses briefly near the far target before
-    -- redirecting the boomerang toward the thrower's Head.
+    -- Preserve the original half-second pause before its return-spin phase.
     if visual.Parent then
         task.wait(RETURN_DELAY)
     end
 
-    animateArc(
-        visual,
-        visual.CFrame,
-        function()
-            if not head.Parent then
+    -- Original controller sets RotVelocity to (0, 10, 0), then waits until
+    -- the boomerang comes within five studs of its return target.
+    if visual.Parent and head.Parent then
+        moveVisualToward(
+            visual,
+            function()
+                if head.Parent then
+                    return head.Position
+                end
                 return nil
-            end
-            return CFrame.lookAt(head.Position, head.Position + direction)
-        end,
-        RETURN_DURATION,
-        -1,
-        ARC_HEIGHT * 0.5
-    )
+            end,
+            RETURN_FINISH_DISTANCE,
+            INITIAL_SPEED,
+            true
+        )
+    end
+
+    if sound and sound.Parent then
+        sound:Stop()
+    end
 
     if visual and visual.Parent then
         visual:Destroy()
