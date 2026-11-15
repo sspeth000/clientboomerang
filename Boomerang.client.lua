@@ -1,8 +1,9 @@
 -- Boomerang.client.lua
 -- Place this LocalScript in StarterPlayer > StarterPlayerScripts.
 -- Recreates the original gear's Handle mesh, texture, grip, attachment, and sound.
--- Throwing uses a client-created, non-interactive physics visual.
--- No projectile collisions, touch effects, damage, remote calls, or server changes.
+-- Throwing uses a client-created physics visual.
+-- It collides with the world but has NoCollisionConstraints against player characters.
+-- No damage, remote calls, or server changes.
 
 local Players = game:GetService("Players")
 
@@ -129,9 +130,8 @@ end
 
 -- Direct client-side translation of the original launcher/controller movement.
 -- BodyPosition, initial velocity, rotation velocity, target distances, polling
--- intervals, and return timing follow the original source. The one intentional
--- gameplay omission is collision/touch behavior: this local clone cannot hit
--- or affect characters, parts, or the server.
+-- intervals, and return timing follow the original source. The visual collides
+-- with non-character world parts, while NoCollisionConstraints exclude players.
 local function performLocalThrow()
     if busy or (os.clock() - lastActivation) < COOLDOWN then
         return
@@ -191,17 +191,60 @@ local function performLocalThrow()
     local outboundTarget = spawnPosition + lookAt * OUTBOUND_DISTANCE
 
     -- Clone only the Handle. It is created by this LocalScript and remains
-    -- local to this client; disabling all interaction prevents gameplay effects.
+    -- local to this client. It collides with world geometry, but not characters.
     local visual = currentHandle:Clone()
     visual.Name = "LocalBoomerangVisual"
     visual.Anchored = false
-    visual.CanCollide = false
+    visual.CanCollide = true
     visual.CanTouch = false
     visual.CanQuery = false
     visual.Massless = false
     visual.CFrame = CFrame.new(spawnPosition)
     visual.Parent = workspace
     activeVisual = visual
+
+    -- Prevent collisions with every player's character while preserving normal
+    -- collision against the map and other non-character parts. Constraints are
+    -- local to this visual and are also added for characters/parts that spawn
+    -- while the boomerang is in flight.
+    local collisionConnections = {}
+    local function excludeCharacter(character)
+        if not character then
+            return
+        end
+
+        local function excludePart(descendant)
+            if not descendant:IsA("BasePart") or not visual.Parent then
+                return
+            end
+
+            local noCollision = Instance.new("NoCollisionConstraint")
+            noCollision.Name = "ExcludePlayerCollision"
+            noCollision.Part0 = visual
+            noCollision.Part1 = descendant
+            noCollision.Parent = visual
+        end
+
+        for _, descendant in ipairs(character:GetDescendants()) do
+            excludePart(descendant)
+        end
+
+        table.insert(collisionConnections, character.DescendantAdded:Connect(excludePart))
+    end
+
+    for _, otherPlayer in ipairs(Players:GetPlayers()) do
+        if otherPlayer.Character then
+            excludeCharacter(otherPlayer.Character)
+        end
+        table.insert(collisionConnections, otherPlayer.CharacterAdded:Connect(excludeCharacter))
+    end
+
+    table.insert(collisionConnections, Players.PlayerAdded:Connect(function(otherPlayer)
+        if otherPlayer.Character then
+            excludeCharacter(otherPlayer.Character)
+        end
+        table.insert(collisionConnections, otherPlayer.CharacterAdded:Connect(excludeCharacter))
+    end))
 
     currentHandle.LocalTransparencyModifier = 1
 
@@ -276,6 +319,10 @@ local function performLocalThrow()
 
     if sound and sound.Parent then
         sound:Stop()
+    end
+
+    for _, connection in ipairs(collisionConnections) do
+        connection:Disconnect()
     end
 
     if visual and visual.Parent then
