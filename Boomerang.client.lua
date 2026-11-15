@@ -215,10 +215,10 @@ local function performLocalThrow()
     -- Equivalent to the original fire(v) spawn and target calculations.
     local spawnPosition = primaryPart.Position + lookAt * LAUNCH_OFFSET
     local outboundTarget = spawnPosition + lookAt * OUTBOUND_DISTANCE
-    -- Snapshot the player's throw-time position. The return target must stay
-    -- fixed here rather than tracking the player as they move. Keep it near
-    -- torso height so the boomerang returns at a practical catching level.
-    local throwReturnPosition = primaryPart.Position + Vector3.new(0, 1.5, 0)
+    -- Snapshot the original controller's return target: the player's Head
+    -- position at throw time. Keep it fixed so the boomerang does not follow
+    -- the player if they move while it is in flight.
+    local throwReturnPosition = head.Position
 
     -- Clone only the Handle. It is created by this LocalScript and remains
     -- local to this client. It collides with world geometry, but not characters.
