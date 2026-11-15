@@ -199,7 +199,9 @@ local function performLocalThrow()
     visual.CanTouch = false
     visual.CanQuery = false
     visual.Massless = false
-    visual.CFrame = CFrame.new(spawnPosition)
+    -- Keep the equipped Handle's orientation so the mesh's flat face stays
+    -- aligned with its grip instead of resetting it to world-axis alignment.
+    visual.CFrame = currentHandle.CFrame + (spawnPosition - currentHandle.Position)
     visual.Parent = workspace
     activeVisual = visual
 
@@ -250,7 +252,10 @@ local function performLocalThrow()
 
     -- Original launcher movement setup, adapted to the non-interactive clone.
     visual.Position = spawnPosition
-    visual.RotVelocity = Vector3.new(0, 10, 0)
+    -- The boomerang mesh is broad across local X/Y, so spin around its local
+    -- depth axis (local Z) to make it rotate flat like a propeller.
+    local spinAxis = visual.CFrame.LookVector
+    visual.RotVelocity = spinAxis * 10
     visual.Velocity = lookAt * INITIAL_VELOCITY
 
     local bodyPosition = Instance.new("BodyPosition")
@@ -301,7 +306,7 @@ local function performLocalThrow()
     -- Original controller waits half a second, then changes RotVelocity.
     if visual.Parent and bodyPosition.Parent and validCharacter then
         task.wait(RETURN_DELAY)
-        visual.RotVelocity = Vector3.new(0, 10, 0)
+        visual.RotVelocity = spinAxis * 10
 
         -- Original return-distance loop, retaining its five-stud threshold.
         while visual.Parent and bodyPosition.Parent do
