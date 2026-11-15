@@ -36,6 +36,21 @@ tool.Grip = CFrame.new(0, -0.12, -0.28) * CFrame.Angles(math.rad(-8), 0, math.ra
 tool:SetAttribute("ClientOnly", true)
 tool:SetAttribute("DecorativeOnly", true)
 
+-- The central section is the Tool's required Handle.
+local handle = Instance.new("Part")
+handle.Name = "Handle"
+handle.Size = Vector3.new(0.22, 0.18, 0.72)
+handle.Material = Enum.Material.Wood
+handle.Color = Color3.fromRGB(151, 91, 48)
+handle.TopSurface = Enum.SurfaceType.Smooth
+handle.BottomSurface = Enum.SurfaceType.Smooth
+handle.CanCollide = false
+handle.CanTouch = false
+handle.CanQuery = false
+handle.Massless = true
+handle.Anchored = false
+handle.Parent = tool
+
 local function makePiece(name, size, color, relativeCFrame, shape)
     local piece
     if shape == "wedge" then
@@ -58,30 +73,13 @@ local function makePiece(name, size, color, relativeCFrame, shape)
     piece.CFrame = relativeCFrame
     piece.Parent = tool
 
-    if name ~= "Handle" then
-        local weld = Instance.new("WeldConstraint")
-        weld.Part0 = handle
-        weld.Part1 = piece
-        weld.Parent = handle
-    end
+    local weld = Instance.new("WeldConstraint")
+    weld.Part0 = handle
+    weld.Part1 = piece
+    weld.Parent = handle
 
     return piece
 end
-
--- The central section is the Tool's required Handle.
-local handle = Instance.new("Part")
-handle.Name = "Handle"
-handle.Size = Vector3.new(0.22, 0.18, 0.72)
-handle.Material = Enum.Material.Wood
-handle.Color = Color3.fromRGB(151, 91, 48)
-handle.TopSurface = Enum.SurfaceType.Smooth
-handle.BottomSurface = Enum.SurfaceType.Smooth
-handle.CanCollide = false
-handle.CanTouch = false
-handle.CanQuery = false
-handle.Massless = true
-handle.Anchored = false
-handle.Parent = tool
 
 -- Short overlapping wooden sections form a curved V silhouette.
 local base = handle.CFrame
@@ -96,11 +94,10 @@ local pieces = {
 }
 
 for _, data in ipairs(pieces) do
-    local relative = data[4]
-    makePiece(data[1], data[2], data[3], base * relative)
+    makePiece(data[1], data[2], data[3], base * data[4])
 end
 
--- Small tapered tips give the ends a more finished, classic prop-like shape.
+-- Small tapered tips finish the ends of the decorative prop.
 makePiece(
     "LeftTip",
     Vector3.new(0.20, 0.16, 0.34),
