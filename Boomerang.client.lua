@@ -352,28 +352,19 @@ local function performLocalThrow()
                 break
             end
 
-            bodyPosition.Position = creatorHead.Position
+            -- The boomerang has reached its outbound destination.
+            -- Drop the guidance force so gravity takes over; it only returns
+            -- to the player when the player physically overlaps it.
+            bodyPosition:Destroy()
             break
         end
     end
 
-    -- Original controller waits half a second, then changes RotVelocity.
-    if visual.Parent and bodyPosition.Parent and validCharacter then
-        task.wait(RETURN_DELAY)
-        visual.RotVelocity = spinAxis * 10
-
-        -- Original return-distance loop, retaining its five-stud threshold.
-        while visual.Parent and bodyPosition.Parent do
-            task.wait(0.1)
-
-            if os.clock() - flightStarted > MAX_FLIGHT_TIME then
-                break
-            end
-
-            if (visual.Position - bodyPosition.Position).Magnitude < RETURN_FINISH_DISTANCE then
-                break
-            end
-        end
+    -- No automatic return: after reaching the outbound destination the
+    -- boomerang falls under gravity and remains catchable on the ground.
+    -- Keep the catch overlap check alive until the player actually touches it.
+    while visual.Parent and not caught do
+        task.wait(0.1)
     end
 
     if sound and sound.Parent then
