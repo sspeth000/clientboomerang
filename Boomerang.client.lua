@@ -59,6 +59,22 @@ tool.Grip = CFrame.new(
     0, 1, 0
 )
 
+-- Original launcher grip poses (gunUp and gunOut).
+-- These are the exact axis vectors from BoomerangLauncher.server.luau.
+local GUN_UP_GRIP = CFrame.fromMatrix(
+    Vector3.new(0.5, 0, 0),
+    Vector3.new(1, 0, 0),
+    Vector3.new(0, 0.196, 0.981),
+    Vector3.new(0, -0.981, 0.196)
+)
+
+local GUN_OUT_GRIP = CFrame.fromMatrix(
+    Vector3.new(0.5, 0, 0),
+    Vector3.new(1, 0, 0),
+    Vector3.new(0, 0, 1),
+    Vector3.new(0, -1, 0)
+)
+
 tool:SetAttribute("ClientOnly", true)
 tool:SetAttribute("DecorativeOnly", true)
 
@@ -150,6 +166,15 @@ local function performLocalThrow()
 
     busy = true
     lastActivation = os.clock()
+
+    -- Original onActivated sequence: raise the grip, launch, then move
+    -- into the follow-through pose after the original 0.1-second reload.
+    tool.Grip = GUN_UP_GRIP
+    task.delay(0.1, function()
+        if tool and tool.Parent then
+            tool.Grip = GUN_OUT_GRIP
+        end
+    end)
 
     if equippedMouse then
         equippedMouse.Icon = WAIT_CURSOR
