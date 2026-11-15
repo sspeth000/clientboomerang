@@ -6,6 +6,7 @@
 -- No damage, remote calls, or server changes.
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 if not player then
@@ -222,7 +223,7 @@ local function performLocalThrow()
     visual.Anchored = false
     visual.CanCollide = true
     visual.CanTouch = false
-    visual.CanQuery = false
+    visual.CanQuery = true
     visual.Massless = false
     -- Keep the equipped Handle's orientation so the mesh's flat face stays
     -- aligned with its grip instead of resetting it to world-axis alignment.
@@ -292,6 +293,32 @@ local function performLocalThrow()
     bodyPosition.Position = outboundTarget
     bodyPosition.Parent = visual
 
+    -- Catch detection stays active for the entire flight, including the
+    -- initial launch and outbound turn. The player's NoCollisionConstraints
+    -- remain in place, so catching does not physically shove the character.
+    local caught = false
+    local overlapParams = OverlapParams.new()
+    overlapParams.FilterType = Enum.RaycastFilterType.Include
+    overlapParams.FilterDescendantsInstances = { currentCharacter }
+
+    local catchConnection
+    catchConnection = RunService.Heartbeat:Connect(function()
+        if caught or not visual.Parent then
+            return
+        end
+
+        local overlappingParts = workspace:GetPartsInPart(visual, overlapParams)
+        if #overlappingParts > 0 then
+            caught = true
+            if bodyPosition.Parent then
+                bodyPosition:Destroy()
+            end
+            if visual.Parent then
+                visual:Destroy()
+            end
+        end
+    end)
+
     local sound = visual:FindFirstChild("FlyingSound")
     if sound and sound:IsA("Sound") then
         sound.Looped = true
@@ -351,6 +378,10 @@ local function performLocalThrow()
 
     if sound and sound.Parent then
         sound:Stop()
+    end
+
+    if catchConnection then
+        catchConnection:Disconnect()
     end
 
     for _, connection in ipairs(collisionConnections) do
