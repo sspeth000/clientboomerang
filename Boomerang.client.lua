@@ -201,7 +201,12 @@ local function performLocalThrow()
     visual.Massless = false
     -- Keep the equipped Handle's orientation so the mesh's flat face stays
     -- aligned with its grip instead of resetting it to world-axis alignment.
-    visual.CFrame = currentHandle.CFrame + (spawnPosition - currentHandle.Position)
+    -- Preserve the held orientation, then rotate the thrown copy 90 degrees
+    -- around its local X axis so the boomerang's broad face lies in the
+    -- intended propeller plane. This does not alter the equipped Handle.
+    visual.CFrame = currentHandle.CFrame
+        * CFrame.Angles(math.rad(90), 0, 0)
+        + (spawnPosition - currentHandle.Position)
     visual.Parent = workspace
     activeVisual = visual
 
