@@ -325,50 +325,58 @@ local function performLocalThrow()
         sound:Play()
     end
 
-    -- Original controller's outbound distance check, including its 0.1s polling.
+    -- Outbound leg. Keep the original destination and polling interval.
     local flightStarted = os.clock()
-    local validCharacter = true
-
-    while visual.Parent and bodyPosition.Parent do
+    while visual.Parent and bodyPosition.Parent and not caught do
         task.wait(0.1)
 
-        if os.clock() - flightStarted > MAX_FLIGHT_TIME then
-            validCharacter = false
-            break
-        end
-
-        if not head.Parent then
-            validCharacter = false
+        if not head.Parent or os.clock() - flightStarted > MAX_FLIGHT_TIME then
             break
         end
 
         if (visual.Position - bodyPosition.Position).Magnitude < OUTBOUND_SWITCH_DISTANCE then
-            -- Original creator lookup/return-target assignment, using the local
-            -- player reference instead of a server-created creator ObjectValue.
-            local creatorCharacter = player.Character
-            local creatorHead = creatorCharacter and creatorCharacter:FindFirstChild("Head")
-            if not creatorHead then
-                validCharacter = false
-                break
-            end
-
-            -- The boomerang has reached its outbound destination.
-            -- Drop the guidance force so gravity takes over; it only returns
-            -- to the player when the player physically overlaps it.
-            bodyPosition:Destroy()
             break
         end
     end
 
-    -- Remove any remaining guidance force (for example if the flight guard
-    -- or character check ended the outbound loop early).
+    -- Return leg: guide the boomerang back to the player's torso/root height,
+    -- not down to the feet or the old head-only target. Catch detection remains
+    -- active throughout this leg, so touching it at any point catches it.
+    local returnStarted = os.clock()
+    local returnRoot = currentCharacter:FindFirstChild("HumanoidRootPart")
+    if visual.Parent and bodyPosition.Parent and not caught and returnRoot then
+        task.wait(RETURN_DELAY)
+
+        local returnTarget = returnRoot.Position + Vector3.new(0, 1.5, 0)
+        bodyPosition.Position = returnTarget
+
+        while visual.Parent and bodyPosition.Parent and not caught do
+            task.wait(0.1)
+
+            local liveCharacter = player.Character
+            local liveRoot = liveCharacter and liveCharacter:FindFirstChild("HumanoidRootPart")
+            if liveRoot then
+                -- Track the player's current level while the boomerang returns.
+                bodyPosition.Position = liveRoot.Position + Vector3.new(0, 1.5, 0)
+            end
+
+            if os.clock() - returnStarted > MAX_FLIGHT_TIME then
+                break
+            end
+
+            if (visual.Position - bodyPosition.Position).Magnitude < RETURN_FINISH_DISTANCE then
+                break
+            end
+        end
+    end
+
+    -- If it was not caught, release guidance and let gravity drop it.
+    -- Keep the local visual in Workspace indefinitely so a missed throw does
+    -- not silently despawn; it can still be touched and caught on the ground.
     if bodyPosition.Parent then
         bodyPosition:Destroy()
     end
 
-    -- No automatic return: after reaching the outbound destination the
-    -- boomerang falls under gravity and remains catchable on the ground.
-    -- Keep the catch overlap check alive until the player actually touches it.
     while visual.Parent and not caught do
         task.wait(0.1)
     end
