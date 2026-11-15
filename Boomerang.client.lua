@@ -343,12 +343,19 @@ local function performLocalThrow()
         end
     end
 
-    -- Return to the fixed position where the player launched the throw.
-    -- This target is a snapshot, not a live character-following position.
+    -- Match the original controller timing: switch the BodyPosition target
+    -- as soon as the outbound leg ends, then keep guiding toward the return
+    -- point during the original 0.5-second pause. The original controller
+    -- refreshed its spin after that pause, then waited until it was within
+    -- RETURN_FINISH_DISTANCE before releasing BodyPosition.
     local returnStarted = os.clock()
     if visual.Parent and bodyPosition.Parent and not caught then
-        task.wait(RETURN_DELAY)
         bodyPosition.Position = throwReturnPosition
+        task.wait(RETURN_DELAY)
+
+        if visual.Parent and bodyPosition.Parent and not caught then
+            visual.RotVelocity = spinAxis * 10
+        end
 
         while visual.Parent and bodyPosition.Parent and not caught do
             task.wait(0.1)
