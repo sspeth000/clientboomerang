@@ -16,7 +16,7 @@ A small Roblox **client-side** script that creates a decorative, classic-style b
 1. Open Roblox Studio.
 2. In Explorer, open `StarterPlayer > StarterPlayerScripts`.
 3. Insert a **LocalScript**.
-4. Copy the contents of [`Boomerang.client.lua`](./Boomerang.client.lua) into it.
+4. Copy the contents of [`BoomerangClient.luau`](./BoomerangClient.luau) into it.
 5. Press **Play**. The decorative Tool should appear in your local hotbar/Backpack.
 
 ## Important limitation

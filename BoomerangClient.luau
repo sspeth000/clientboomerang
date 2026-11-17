@@ -1,4 +1,4 @@
--- Boomerang.client.lua
+-- BoomerangClient.luau
 -- Place this LocalScript in StarterPlayer > StarterPlayerScripts.
 -- Recreates the original gear's Handle mesh, texture, grip, attachment, and sound.
 -- Throwing uses a client-created physics visual.
@@ -120,7 +120,6 @@ local busy = false
 local lastActivation = 0
 local activeVisual = nil
 local equippedMouse = nil
-local cursorReady = true
 
 local NORMAL_CURSOR = "rbxasset://textures\\GunCursor.png"
 local WAIT_CURSOR = "rbxasset://textures\\GunWaitCursor.png"
@@ -179,9 +178,7 @@ local function performLocalThrow()
 
     if equippedMouse then
         equippedMouse.Icon = WAIT_CURSOR
-        cursorReady = false
         task.delay(COOLDOWN, function()
-            cursorReady = true
             if equippedMouse then
                 equippedMouse.Icon = NORMAL_CURSOR
             end
@@ -409,7 +406,6 @@ end
 
 tool.Equipped:Connect(function(mouse)
     equippedMouse = mouse
-    cursorReady = true
     if equippedMouse then
         equippedMouse.Icon = NORMAL_CURSOR
     end
@@ -419,7 +415,6 @@ tool.Activated:Connect(performLocalThrow)
 
 tool.Unequipped:Connect(function()
     equippedMouse = nil
-    cursorReady = false
 
     -- Restore the real Handle even though the Tool has moved back to Backpack.
     local currentHandle = tool:FindFirstChild("Handle")
